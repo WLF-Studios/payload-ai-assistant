@@ -3,7 +3,7 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import path from 'path'
 import { buildConfig } from 'payload'
-import { payloadAiAssistant } from 'payload-ai-assistant'
+import { aiAssistantPlugin } from 'payload-ai-assistant'
 import sharp from 'sharp'
 import { fileURLToPath } from 'url'
 
@@ -38,7 +38,9 @@ const buildConfigWithMemoryDB = async () => {
     collections: [
       {
         slug: 'posts',
-        fields: [],
+        admin: { useAsTitle: 'title' },
+        fields: [{ name: 'title', type: 'text', required: true }],
+        versions: { drafts: true },
       },
       {
         slug: 'media',
@@ -58,10 +60,9 @@ const buildConfigWithMemoryDB = async () => {
       await seed(payload)
     },
     plugins: [
-      payloadAiAssistant({
-        collections: {
-          posts: true,
-        },
+      aiAssistantPlugin({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        mode: 'full',
       }),
     ],
     secret: process.env.PAYLOAD_SECRET || 'test-secret_key',
