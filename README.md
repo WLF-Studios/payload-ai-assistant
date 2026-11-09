@@ -1,218 +1,279 @@
-# Payload Plugin Template
+# Payload AI Assistant
 
-A template repo to create a [Payload CMS](https://payloadcms.com) plugin.
+An AI assistant widget for the Payload 3 dashboard. Editors ask questions about content, structure and SEO; the model answers through a real MCP server that runs in-process, against the Payload local API, as the logged-in user.
 
-Payload is built with a robust infrastructure intended to support Plugins with ease. This provides a simple, modular, and reusable way for developers to extend the core capabilities of Payload.
+- One `POST /api/ai-assistant` endpoint streams an AI SDK UI message stream.
+- Per request it builds an MCP server (`@modelcontextprotocol/sdk`) with the session's tools and connects to it over an in-memory transport. No network hop, no MCP API keys, no shared admin identity.
+- Every Payload call uses `req`, `user: req.user` and `overrideAccess: false`, so the chat can do exactly what the user can do in the admin panel, nothing more.
+- The model runs on OpenRouter by default, or on any AI SDK provider you pass as `provider`.
 
-To build your own Payload plugin, all you need is:
+## Setup
 
-- An understanding of the basic Payload concepts
-- And some JavaScript/Typescript experience
+Requires `payload ^3.92.0`, `@payloadcms/ui ^3.92.0`, `next ^16`, `react ^19`, and an [OpenRouter](https://openrouter.ai) API key, or any AI SDK provider.
 
-## Background
-
-Here is a short recap on how to integrate plugins with Payload, to learn more visit the [plugin overview page](https://payloadcms.com/docs/plugins/overview).
-
-### How to install a plugin
-
-To install any plugin, simply add it to your payload.config() in the Plugin array.
-
-```ts
-import myPlugin from 'my-plugin'
-
-export const config = buildConfig({
-  plugins: [
-    // You can pass options to the plugin
-    myPlugin({
-      enabled: true,
-    }),
-  ],
-})
+```bash
+pnpm add payload-ai-assistant
 ```
 
-### Initialization
+Only `apiKey` (or `provider`) is needed for the chat to answer. This example shows every option with its default:
 
-The initialization process goes in the following order:
-
-1. Incoming config is validated
-2. **Plugins execute**
-3. Default options are integrated
-4. Sanitization cleans and validates data
-5. Final config gets initialized
-
-## Building the Plugin
-
-When you build a plugin, you are purely building a feature for your project and then abstracting it outside of the project.
-
-### Template Files
-
-In the Payload [plugin template](https://github.com/payloadcms/payload/tree/3.x/templates/plugin), you will see a common file structure that is used across all plugins:
-
-1. root folder
-2. /src folder
-3. /dev folder
-
-#### Root
-
-In the root folder, you will see various files that relate to the configuration of the plugin. We set up our environment in a similar manner in Payload core and across other projects, so hopefully these will look familiar:
-
-- **README**.md\* - This contains instructions on how to use the template. When you are ready, update this to contain instructions on how to use your Plugin.
-- **package**.json\* - Contains necessary scripts and dependencies. Overwrite the metadata in this file to describe your Plugin.
-- .**eslint**.config.js - Eslint configuration for reporting on problematic patterns.
-- .**gitignore** - List specific untracked files to omit from Git.
-- .**prettierrc**.json - Configuration for Prettier code formatting.
-- **tsconfig**.json - Configures the compiler options for TypeScript
-- .**swcrc** - Configuration for SWC, a fast compiler that transpiles and bundles TypeScript.
-- **vitest**.config.js - Config file for Vitest, defining how tests are run and how modules are resolved
-
-**IMPORTANT\***: You will need to modify these files.
-
-#### Dev
-
-In the dev folder, you’ll find a basic payload project, created with `npx create-payload-app` and the blank template.
-
-**IMPORTANT**: Make a copy of the `.env.example` file and rename it to `.env`. Update the `DATABASE_URL` to match the database you are using and your plugin name. Update `PAYLOAD_SECRET` to a unique string.
-**You will not be able to run `pnpm/yarn dev` until you have created this `.env` file.**
-
-`myPlugin` has already been added to the `payload.config()` file in this project.
-
+<!-- prettier-ignore -->
 ```ts
-plugins: [
-  myPlugin({
-    collections: {
-      posts: true,
+import { aiAssistantPlugin, defaultModels, defaultQuickPrompts } from 'payload-ai-assistant'
+
+export const plugins = [
+  aiAssistantPlugin({
+    apiKey: process.env.OPENROUTER_API_KEY, // Built-in OpenRouter provider. Any env var name.
+    // provider: createWorkersAI({ accountId, apiKey }), // Instead of apiKey; then pass models.
+    mode: 'read', // 'full' adds draft-only create/update tools with chat approval.
+    access: ({ user }) => Boolean(user), // Who sees and may use the chat. Default: any admin user.
+
+    knowledgeFile: 'src/ai/site.md', // Markdown site facts, relative to process.cwd(). Default: none.
+    instructions: 'Locales are markets.', // Short inline context, after the knowledge file. Default: none.
+
+    models: defaultModels, // Models each user may pick from.
+    defaultModel: 'anthropic/claude-haiku-5.5', // Must be in `models`. Default: the first one.
+    quickPrompts: [...defaultQuickPrompts, { label: 'Leads', prompt: 'Leads this week?' }], // Chips.
+
+    collections: ['pages', 'media'], // Allowlist. Default: collections the user sees in the sidebar.
+    globals: ['header'], // Allowlist. Default: globals the user sees in the sidebar.
+
+    documentURL: ({ collection, doc }) => // Public link next to the admin link. Default: none.
+      collection === 'pages' ? { public: `https://example.com/${String(doc.slug)}/` } : undefined,
+
+    tools: [ // Project tools on the same MCP server. Default: none.
+      {
+        name: 'siteStatus',
+        description: 'Current build status of the public site.',
+        kind: 'read', // 'write' tools exist only in full mode and need approval.
+        inputSchema: {}, // Zod 4 raw shape, e.g. { id: z.string() }.
+        handler: async (args, req) => ({ ok: true }), // A non-string result is JSON-stringified.
+      },
+    ],
+
+    limits: {
+      maxSteps: 12, // Model steps per message; the last one must answer without tools.
+      maxDocuments: 20, // Per find call.
+      maxToolOutputChars: 12_000,
+      maxOutputTokens: 4096,
+      maxUserMessageChars: 4000,
     },
+
+    endpointPath: '/ai-assistant', // Under config.routes.api.
+    widget: { slug: 'ai-assistant', label: 'Assistant', position: 'before-collections' },
+    disabled: false, // True returns the config untouched.
   }),
 ]
 ```
 
-Later when you rename the plugin or add additional options, **make sure to update it here**.
+The plugin reads no environment variables; pass the key from whichever variable your project uses. A missing key does not break the admin panel: the endpoint answers `503` with a plain message and the widget shows it. An invalid `mode` or a `defaultModel` outside `models` throws at config time.
 
-You may wish to add collections or expand the test project depending on the purpose of your plugin. Just make sure to keep this dev environment as simplified as possible - users should be able to install your plugin without additional configuration required.
+Refresh the admin import map; it adds `payload-ai-assistant/rsc#AiAssistantWidget` and the provider `payload-ai-assistant/client#AiAssistantProvider`:
 
-When you’re ready to start development, initiate the project with `pnpm/npm/yarn dev` and pull up [http://localhost:3000](http://localhost:3000) in your browser.
-
-#### Src
-
-Now that we have our environment setup and we have a dev project ready to - it’s time to build the plugin!
-
-**index.ts**
-
-The essence of a Payload plugin is simply to extend the payload config - and that is exactly what we are doing in this file.
-
-```ts
-export const myPlugin =
-  (pluginOptions: MyPluginConfig) =>
-  (config: Config): Config => {
-    // do cool stuff with the config here
-
-    return config
-  }
+```bash
+pnpm exec payload generate:importmap
 ```
 
-First, we receive the existing payload config along with any plugin options.
+## Configuration
 
-From here, you can extend the config as you wish.
+| Option          | Default                                                                        | Purpose                                                           |
+| --------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `apiKey`        | None; `apiKey` or `provider` is needed to answer                               | API key for the built-in OpenRouter provider                      |
+| `provider`      | OpenRouter via `apiKey`                                                        | Any AI SDK provider, `(modelId) => LanguageModel`; needs `models` |
+| `mode`          | `'read'`                                                                       | `'full'` adds create/update tools (drafts only, chat approval)    |
+| `access`        | Any logged-in admin user                                                       | Who sees and may use the chat                                     |
+| `knowledgeFile` | None                                                                           | Markdown file with site facts, relative to `process.cwd()`        |
+| `instructions`  | None                                                                           | Short inline site context, appended after the knowledge file      |
+| `models`        | `defaultModels`                                                                | Models each user may pick from                                    |
+| `defaultModel`  | First of `models`                                                              | Preselected model; must be an id in `models`                      |
+| `quickPrompts`  | `defaultQuickPrompts`                                                          | Chips under the input                                             |
+| `tools`         | `[]`                                                                           | Project tools                                                     |
+| `documentURL`   | None                                                                           | Public links next to admin links                                  |
+| `collections`   | Sidebar-visible collections                                                    | Allowlist of collection slugs                                     |
+| `globals`       | Sidebar-visible globals                                                        | Allowlist of global slugs                                         |
+| `limits`        | See Setup                                                                      | Steps, documents, output and message sizes                        |
+| `endpointPath`  | `'/ai-assistant'`                                                              | Chat endpoint under `config.routes.api`                           |
+| `widget`        | `{ slug: 'ai-assistant', label: 'Assistant', position: 'before-collections' }` | Dashboard widget                                                  |
+| `disabled`      | `false`                                                                        | Disable the plugin                                                |
 
-Finally, you return the config and that is it!
+`defaultModels` and `defaultQuickPrompts` are exported, so projects extend them instead of copying them:
 
-##### Spread Syntax
+- Models: Claude Haiku 5.5, GPT-6 Luna, GLM 5.3 Flash, DeepSeek V4.1 Flash (in that order).
+- Quick prompts: SEO audit, Missing descriptions, Changed this week, Broken links, Drafts waiting, Content overview.
 
-Spread syntax (or the spread operator) is a feature in JavaScript that uses the dot notation **(...)** to spread elements from arrays, strings, or objects into various contexts.
+## Other providers
 
-We are going to use spread syntax to allow us to add data to existing arrays without losing the existing data. It is crucial to spread the existing data correctly – else this can cause adverse behavior and conflicts with Payload config and other plugins.
+`provider` takes any AI SDK provider instance, which is already a `(modelId) => LanguageModel` function. It replaces `apiKey` (passing both throws) and requires `models`, because `defaultModels` are OpenRouter ids.
 
-Let’s say you want to build a plugin that adds a new collection:
+Compatibility: this plugin streams through `ai@7`, whose `LanguageModel` accepts models with `specificationVersion` `v4` (native), `v3` or `v2` (compatibility mode). Use provider packages built for AI SDK 7 / `@ai-sdk/provider` v4 — for reference, `ai@7.0.163` depends on `@ai-sdk/provider` 4.0.x and is tested against `@ai-sdk/openai` 4.x.
 
-```ts
-config.collections = [
-  ...(config.collections || []),
-  // Add additional collections here
-]
-```
-
-First we spread the `config.collections` to ensure that we don’t lose the existing collections, then you can add any additional collections just as you would in a regular payload config.
-
-This same logic is applied to other properties like admin, hooks, globals:
-
-```ts
-config.globals = [
-  ...(config.globals || []),
-  // Add additional globals here
-]
-
-config.hooks = {
-  ...(incomingConfig.hooks || {}),
-  // Add additional hooks here
-}
-```
-
-Some properties will be slightly different to extend, for instance the onInit property:
+Cloudflare Workers AI, in REST mode, so it also works outside Workers:
 
 ```ts
-import { onInitExtension } from './onInitExtension' // example file
+import { createWorkersAI } from 'workers-ai-provider'
 
-config.onInit = async (payload) => {
-  if (incomingConfig.onInit) await incomingConfig.onInit(payload)
-  // Add additional onInit code by defining an onInitExtension function
-  onInitExtension(pluginOptions, payload)
-}
-```
+const workersai = createWorkersAI({
+  accountId: process.env.CF_ACCOUNT_ID,
+  apiKey: process.env.CF_AI_TOKEN,
+})
 
-If you wish to add to the onInit, you must include the **async/await**. We don’t use spread syntax in this case, instead you must await the existing `onInit` before running additional functionality.
-
-In the template, we have stubbed out some addition `onInit` actions that seeds in a document to the `plugin-collection`, you can use this as a base point to add more actions - and if not needed, feel free to delete it.
-
-##### Types.ts
-
-If your plugin has options, you should define and provide types for these options.
-
-```ts
-export type MyPluginConfig = {
-  /**
-   * List of collections to add a custom field
-   */
-  collections?: Partial<Record<CollectionSlug, true>>
-  /**
-   * Disable the plugin
-   */
-  disabled?: boolean
-}
-```
-
-If possible, include JSDoc comments to describe the options and their types. This allows a developer to see details about the options in their editor.
-
-##### Testing
-
-Having a test suite for your plugin is essential to ensure quality and stability. **Vitest** is a fast, modern testing framework that works seamlessly with Vite and supports TypeScript out of the box.
-
-Vitest organizes tests into test suites and cases, similar to other testing frameworks. We recommend creating individual tests based on the expected behavior of your plugin from start to finish.
-
-Writing tests with Vitest is very straightforward, and you can learn more about how it works in the [Vitest documentation.](https://vitest.dev/)
-
-For this template, we stubbed out `int.spec.ts` in the `dev` folder where you can write your tests.
-
-```ts
-describe('Plugin tests', () => {
-  // Create tests to ensure expected behavior from the plugin
-  it('some condition that must be met', () => {
-   // Write your test logic here
-   expect(...)
-  })
+aiAssistantPlugin({
+  provider: workersai,
+  models: [{ id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', label: 'Llama 3.3 70B' }],
 })
 ```
 
-## Best practices
+Anthropic:
 
-With this tutorial and the plugin template, you should have everything you need to start building your own plugin.
-In addition to the setup, here are other best practices aim we follow:
+```ts
+import { createAnthropic } from '@ai-sdk/anthropic'
 
-- **Providing an enable / disable option:** For a better user experience, provide a way to disable the plugin without uninstalling it. This is especially important if your plugin adds additional webpack aliases, this will allow you to still let the webpack run to prevent errors.
-- **Include tests in your GitHub CI workflow**: If you’ve configured tests for your package, integrate them into your workflow to run the tests each time you commit to the plugin repository. Learn more about [how to configure tests into your GitHub CI workflow.](https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs)
-- **Publish your finished plugin to NPM**: The best way to share and allow others to use your plugin once it is complete is to publish an NPM package. This process is straightforward and well documented, find out more [creating and publishing a NPM package here.](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/).
-- **Add payload-plugin topic tag**: Apply the tag **payload-plugin **to your GitHub repository. This will boost the visibility of your plugin and ensure it gets listed with [existing payload plugins](https://github.com/topics/payload-plugin).
-- **Use [Semantic Versioning](https://semver.org/) (SemVar)** - With the SemVar system you release version numbers that reflect the nature of changes (major, minor, patch). Ensure all major versions reference their Payload compatibility.
+const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-# Questions
+aiAssistantPlugin({
+  provider: anthropic,
+  models: [{ id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' }],
+})
+```
 
-Please contact [Payload](mailto:dev@payloadcms.com) with any questions about using this plugin template.
+OpenAI:
+
+```ts
+import { createOpenAI } from '@ai-sdk/openai'
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+aiAssistantPlugin({ provider: openai, models: [{ id: 'gpt-6-luna', label: 'GPT-6 Luna' }] })
+```
+
+Any OpenAI-compatible endpoint (Ollama, LM Studio, gateways):
+
+```ts
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+
+const local = createOpenAICompatible({
+  name: 'ollama',
+  baseURL: 'http://localhost:11434/v1',
+  apiKey: 'ollama',
+})
+
+aiAssistantPlugin({ provider: local, models: [{ id: 'qwen3:14b', label: 'Qwen3 14B' }] })
+```
+
+Mixing providers is one routing function:
+
+```ts
+aiAssistantPlugin({
+  provider: (id) => (id.startsWith('@cf/') ? workersai(id) : anthropic(id)),
+  models: [
+    { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', label: 'Llama 3.3 70B' },
+    { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+  ],
+})
+```
+
+The model must support streaming and tool calling, and small models handle dozens of tools poorly.
+
+## Site knowledge
+
+`knowledgeFile` points to a Markdown file with what the schema cannot tell the model: what the site is, how URLs map to documents, folder-only pages, naming conventions, which collections matter for SEO. It is sent with every message, so keep it short.
+
+The file is read once, on the first chat request, and cached until the server restarts. A missing or unreadable file logs one warning with the resolved path; the chat answers without it.
+
+The path resolves against `process.cwd()`, which is the Payload app folder for the Payload CLI, `next dev` and Next's standalone server. With Next `output: 'standalone'`, add the file to the build trace so it ships with the server:
+
+```js
+// next.config.mjs
+const nextConfig = {
+  output: 'standalone',
+  outputFileTracingIncludes: {
+    '/**': ['./src/ai/site.md'],
+  },
+}
+```
+
+Other setups need nothing.
+
+## Modes
+
+The mode comes from the `mode` option only, never from the UI or the request body. It decides which tools exist on the MCP server, so it is enforced by construction rather than by the prompt.
+
+- `read`: find, count, describe and audit tools only. The assistant says it cannot edit when asked.
+- `full`: adds `create<Collection>`, `update<Collection>` and `update<Global>` for collections and globals with `versions.drafts`, plus project tools of kind `write`.
+
+### Writes
+
+- Always drafts: `draft: true` and `_status: 'draft'` are set server-side; the model cannot publish.
+- Only on entities with drafts enabled. Collections without drafts stay read-only even in `full` mode.
+- Every write tool has `needsApproval: true`. The stream stops at an approval card in the chat; nothing runs until the user clicks Approve. Deny ends the call.
+- No delete tool. Updates are by id only, never by `where`.
+- The approval response travels in the client's messages. That is acceptable because the write still runs through the local API as the same session user with `overrideAccess: false`: a forged approval cannot do more than the admin UI already allows that user.
+
+## Tools
+
+Generic read tools: `describeSchema`, `countDocuments`, `recentChanges`, `seoAudit`, `findBrokenReferences`, `unusedMedia`.
+
+Per collection in scope: `find<Collection>` (e.g. `findPages`, names mirror `@payloadcms/plugin-mcp`), `create<Collection>`, `update<Collection>`. Per global: `find<Global>`, `update<Global>`.
+
+- `find*` returns a compact summary per document (id, `useAsTitle`, `slug`, `_status`, dates, `meta` title/description/image) plus `links: { admin, public? }`. `fields` adds top-level fields; `includeContent` adds rich text as plain text. Reads drafts by default. Max `limits.maxDocuments` per call.
+- `seoAudit` finds collections with a plugin-seo style `meta` group (`title`, `description`, optional `image`) and reports missing values, titles outside 50-60 characters, descriptions outside 100-150 characters, duplicate titles and missing images. Bounds are fixed in this version.
+- `findBrokenReferences` walks relationship, upload and rich-text references (groups, tabs, arrays, blocks) in one collection or one global and reports targets that are missing or unpublished. A document referencing itself, such as its own nested-docs breadcrumb, is skipped.
+- `unusedMedia` lists uploads no in-scope collection or global references. Coarse: at most 2000 documents scanned per collection; the output says when the cap was hit.
+- Tool output is cut at `limits.maxToolOutputChars` with a note asking the model to narrow the query.
+
+## Scope
+
+By default the chat sees what the logged-in user sees in the admin sidebar: every collection and global whose `admin.hidden` is not set for that user. `admin.hidden` functions are called with the request user, per chat request; a function that throws counts as hidden. `collections` and `globals` replace that default with exact slug lists; unknown slugs are ignored with a warning. Auth collections and `payload-*` internals are always excluded.
+
+## Model select
+
+- The widget shows a dropdown of `models` (`description` is the option's tooltip), preselected to `defaultModel`.
+- The client sends the chosen id as `model` in the request body. The endpoint answers `400 Unknown model.` for any id outside the list; the mode never comes from the body.
+- The choice is per user, stored in Payload's `payload-preferences` collection under the key `payload-ai-assistant-model` as `{ id }`. It survives reloads and other browsers; changing it mid-conversation applies to the next message. Everyone with access to the widget may pick.
+
+## Widget
+
+Full width on the dashboard. It is a card styled after Payload v4 (scoped custom properties, light and dark): a header with the title, mode chip and model picker, a search-style composer and the quick prompts. Once a conversation starts it shows chat bubbles and grows with the content (no inner scroll). Reasoning shows as a collapsible "Thinking..." line; tool calls show as one-line steps that collapse into a "Used n tools" toggle when the answer is done. Enter sends, Shift+Enter adds a newline.
+
+The conversation lives in an admin-wide provider (`admin.components.providers`), so it survives client-side navigation and keeps streaming while the dashboard is not shown. Same-origin links in answers navigate client-side. Completed turns are saved to `sessionStorage` per user: a reload restores them, closing the tab, logging out, switching user or "New" clears them. Nothing is stored on the server.
+
+### Dashboard preferences
+
+The plugin adds the widget to `admin.dashboard.defaultLayout` (it wraps a function layout, inserts into an array layout, or creates `[chat, collections]`). Users who already rearranged their dashboard have a saved layout preference and will not see the widget until they add it in the dashboard's edit mode. The plugin does not touch preferences.
+
+## Testing a local build
+
+```sh
+pnpm build && pnpm pack   # payload-ai-assistant-0.1.0.tgz
+```
+
+In the consuming project:
+
+```json
+"payload-ai-assistant": "file:../payload-ai-assistant-plugin/payload-ai-assistant-0.1.0.tgz"
+```
+
+Run `pnpm install` and `payload generate:importmap`. After every repack, reinstall (pnpm caches tarballs by integrity; `pnpm install --force` if it does not pick up the change).
+
+## Development
+
+Built on the official Payload plugin template. `dev/` is a Payload app that loads the plugin straight from `src/`.
+
+```sh
+pnpm install
+cp dev/.env.example dev/.env   # DATABASE_URL (MongoDB), PAYLOAD_SECRET, OPENROUTER_API_KEY
+pnpm dev                       # http://localhost:3000/admin, dev@payloadcms.com / test
+```
+
+```sh
+pnpm test:int   # Unit specs in src/ plus dev/int.spec.ts on in-memory MongoDB; no API key needed
+pnpm test:e2e   # Playwright against pnpm dev
+pnpm lint
+pnpm build
+```
+
+After changing component paths, run `pnpm generate:importmap`; after changing the dev schema, `pnpm generate:types`.
+
+## License
+
+MIT, WLF Studios.
