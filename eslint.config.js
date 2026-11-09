@@ -15,6 +15,7 @@ export const defaultESLintIgnores = [
   '**/README.md',
   '**/eslint.config.js',
   '**/payload-types.ts',
+  '**/importMap.js',
   '**/dist/',
   '**/.yarn/',
   '**/build/',
@@ -23,6 +24,9 @@ export const defaultESLintIgnores = [
 ]
 
 export default [
+  {
+    ignores: defaultESLintIgnores,
+  },
   ...payloadEsLintConfig,
   {
     rules: {
