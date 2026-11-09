@@ -3,10 +3,10 @@ import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import path from 'path'
 import { buildConfig } from 'payload'
-import { aiAssistantPlugin } from 'payload-ai-assistant'
 import sharp from 'sharp'
 import { fileURLToPath } from 'url'
 
+import { aiAssistantPlugin } from '../src/index.js'
 import { testEmailAdapter } from './helpers/testEmailAdapter.js'
 import { seed } from './seed.js'
 
