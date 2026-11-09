@@ -46,7 +46,7 @@ export function createChatMcpServer({ limits, links, mode, req, scope, tools = [
   server: McpServer
   writeTools: Set<string>
 } {
-  const server = new McpServer({ name: PLUGIN_SLUG, version: '0.1.0' })
+  const server = new McpServer({ name: PLUGIN_SLUG, version: '1.0.0' })
   const ctx = { limits, links, req, scope }
   const writeTools = new Set<string>()
 

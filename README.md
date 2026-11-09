@@ -244,13 +244,13 @@ The plugin adds the widget to `admin.dashboard.defaultLayout` (it wraps a functi
 ## Testing a local build
 
 ```sh
-pnpm build && pnpm pack   # payload-ai-assistant-0.1.0.tgz
+pnpm build && pnpm pack   # payload-ai-assistant-1.0.0.tgz
 ```
 
 In the consuming project:
 
 ```json
-"payload-ai-assistant": "file:../payload-ai-assistant-plugin/payload-ai-assistant-0.1.0.tgz"
+"payload-ai-assistant": "file:../payload-ai-assistant-plugin/payload-ai-assistant-1.0.0.tgz"
 ```
 
 Run `pnpm install` and `payload generate:importmap`. After every repack, reinstall (pnpm caches tarballs by integrity; `pnpm install --force` if it does not pick up the change).
