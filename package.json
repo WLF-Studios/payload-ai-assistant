@@ -1,7 +1,7 @@
 {
   "name": "payload-ai-assistant",
-  "version": "1.0.0",
-  "description": "A blank template to get started with Payload 3.0",
+  "version": "0.1.0",
+  "description": "AI assistant for the Payload admin dashboard, backed by an in-process MCP server",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -24,12 +24,13 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
-    "build": "pnpm copyfiles && pnpm build:types && pnpm build:swc",
-    "build:swc": "swc ./src -d ./dist --config-file .swcrc --strip-leading-paths",
-    "build:types": "tsc --outDir dist --rootDir ./src",
+    "build": "pnpm clean && pnpm copyfiles && pnpm build:types && pnpm build:swc",
+    "build:swc": "swc ./src -d ./dist --config-file .swcrc --strip-leading-paths --ignore \"**/*.spec.ts\"",
+    "build:types": "tsc --project tsconfig.build.json",
     "clean": "rimraf {dist,*.tsbuildinfo}",
     "copyfiles": "copyfiles -u 1 \"src/**/*.{html,css,scss,ttf,woff,woff2,eot,svg,jpg,png,json}\" dist/",
     "dev": "next dev dev --turbo",
@@ -42,7 +43,8 @@
     "lint:fix": "eslint ./src --fix",
     "test": "pnpm test:int && pnpm test:e2e",
     "test:e2e": "playwright test",
-    "test:int": "vitest"
+    "test:int": "vitest",
+    "prepublishOnly": "pnpm clean && pnpm build"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -80,7 +82,11 @@
     "vitest": "4.0.18"
   },
   "peerDependencies": {
-    "payload": "^3.93.0"
+    "@payloadcms/ui": "^3.92.0",
+    "next": "^16",
+    "payload": "^3.92.0",
+    "react": "^19",
+    "react-dom": "^19"
   },
   "engines": {
     "node": "^22.23.4 || >=24.22.1",
@@ -105,15 +111,27 @@
       }
     },
     "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
+    "types": "./dist/index.d.ts",
+    "registry": "https://registry.npmjs.org/"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "sharp",
-      "esbuild",
-      "unrs-resolver"
-    ]
+  "dependencies": {
+    "@ai-sdk/mcp": "2.0.91",
+    "@ai-sdk/react": "4.0.167",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@openrouter/ai-sdk-provider": "3.1.0",
+    "ai": "7.0.163",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "zod": "^4.4.3"
   },
-  "registry": "https://registry.npmjs.org/",
-  "dependencies": {}
+  "keywords": [
+    "payload",
+    "payloadcms",
+    "payload-plugin",
+    "ai",
+    "assistant",
+    "mcp",
+    "chat"
+  ],
+  "author": "WLF Studios"
 }

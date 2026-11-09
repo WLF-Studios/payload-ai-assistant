@@ -1,1 +1,1 @@
-export { BeforeDashboardServer } from '../components/BeforeDashboardServer.js'
+export { AiAssistantWidget } from '../components/AiAssistantWidget.js'
