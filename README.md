@@ -2,6 +2,10 @@
 
 An AI assistant widget for the Payload 3 dashboard. Editors ask questions about content, structure and SEO; the model answers through a real MCP server that runs in-process, against the Payload local API, as the logged-in user.
 
+<p align="center">
+  <img alt="AI assistant on the Payload dashboard" src="assets/ai-assistant.png" width="100%" />
+</p>
+
 - One `POST /api/ai-assistant` endpoint streams an AI SDK UI message stream.
 - Per request it builds an MCP server (`@modelcontextprotocol/sdk`) with the session's tools and connects to it over an in-memory transport. No network hop, no MCP API keys, no shared admin identity.
 - Every Payload call uses `req`, `user: req.user` and `overrideAccess: false`, so the chat can do exactly what the user can do in the admin panel, nothing more.
