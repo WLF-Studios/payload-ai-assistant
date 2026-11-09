@@ -18,6 +18,9 @@ export default defineConfig(() => {
     ],
     test: {
       environment: 'node',
+      // The 503 test needs the dev app without a provider.
+      env: { OPENROUTER_API_KEY: '' },
+      include: ['src/**/*.spec.ts', 'dev/int.spec.ts'],
       hookTimeout: 30_000,
       testTimeout: 30_000,
     },
