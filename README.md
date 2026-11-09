@@ -274,6 +274,14 @@ pnpm build
 
 After changing component paths, run `pnpm generate:importmap`; after changing the dev schema, `pnpm generate:types`.
 
+## Publishing
+
+- Publishing a GitHub Release runs `.github/workflows/publish.yml`, which builds and runs `npm publish --provenance --access public`. Manual publishing is available through `workflow_dispatch` with a required tag.
+- The release tag must match `package.json`, for example `v1.0.0` for version `1.0.0`.
+- Configure npm Trusted Publishing for owner `WLF-Studios`, repository `payload-ai-assistant` and workflow `publish.yml`. Publishing uses GitHub OIDC and npm provenance; no npm token is stored.
+
+Commit and push the version bump before creating the release. A local commit alone does not publish the package.
+
 ## License
 
 MIT, WLF Studios.
